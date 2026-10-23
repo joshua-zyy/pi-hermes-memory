@@ -36,7 +36,7 @@ describe("memory doctor", () => {
       writeStore(globalDir, {
         "MEMORY.md": ["aaaa", "bbbb"],
         "USER.md": ["cccc"],
-        "failures.md": ["dddd"],
+        "failures.md": ["dddd", "ffff"],
       });
       writeStore(path.join(projectsRoot, "proj"), { "MEMORY.md": ["eeee"] });
       fs.writeFileSync(path.join(globalDir, ".failures.md.recovery-1-x"), Buffer.alloc(10, 1));
@@ -48,6 +48,7 @@ describe("memory doctor", () => {
         addMemory(dbManager, "bbbb", "memory");
         addMemory(dbManager, "cccc", "user");
         addMemory(dbManager, "dddd", "failure");
+        addMemory(dbManager, "project-tagged failure", "failure", "proj");
         addMemory(dbManager, "eeee", "memory", "proj");
 
         const report = await collectDoctorReport({ config: config(projectsRoot), globalDir, dbManager });
@@ -63,9 +64,10 @@ describe("memory doctor", () => {
         assert.equal(globalMemory.goal, 100);
         assert.equal(globalMemory.overGoal, 0);
         assert.equal(globalMemory.mirrorRows, 2);
-        assert.equal(globalFailure.chars, 4);
+        assert.equal(globalFailure.chars, 11);
         assert.equal(globalFailure.goal, 200);
-        assert.equal(globalFailure.mirrorRows, 1);
+        // failures.md is global, so every failure row counts regardless of project tag.
+        assert.equal(globalFailure.mirrorRows, 2);
         assert.equal(projectMemory.chars, 4);
         assert.equal(projectMemory.goal, 80);
         assert.equal(projectMemory.mirrorRows, 1);
@@ -76,7 +78,7 @@ describe("memory doctor", () => {
         assert.equal(globalStore.snapshots.bytes, 10);
 
         assert.deepEqual(report.warnings, []);
-        assert.equal(report.totals.entries, 5);
+        assert.equal(report.totals.entries, 6);
         const text = formatDoctorReport(report);
         assert.match(text, /Memory Doctor/);
         assert.match(text, /no findings/);

@@ -59,7 +59,7 @@ describe("memory prune", () => {
     assert.deepEqual([...applied.targets].sort(), ["failure", "memory", "user"]);
     // Invalid numbers fall back to the defaults instead of disabling retention.
     const broken = parsePruneArgs("--keep-days nope --min-hits 0");
-    assert.equal(broken.keepDays, 14);
+    assert.equal(broken.keepDays, 3);
     assert.equal(broken.minHits, 1);
   });
 
@@ -131,6 +131,20 @@ describe("memory prune", () => {
         () => applyPrunePlan([{ ...plan, dropped: [] }], archiveDir, TODAY),
         /archive directory already exists/,
       );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("creates no archive when nothing is droppable", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "prune-"));
+    try {
+      const archive = path.join(root, "archive");
+      const result = applyPrunePlan([], archive, TODAY);
+      assert.equal(result.removedEntries, 0);
+      assert.equal(fs.existsSync(archive), false);
+      const text = formatPruneReport(result);
+      assert.match(text, /every entry is protected by the keep rules/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

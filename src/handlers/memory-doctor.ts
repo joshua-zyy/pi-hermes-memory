@@ -99,9 +99,13 @@ function mirrorCount(dbManager: DatabaseManager | null, target: Target, project:
   if (!dbManager) return null;
   try {
     const db = dbManager.getDb();
-    const row = project === null
-      ? db.prepare("SELECT count(*) AS n FROM memories WHERE target = ? AND project IS NULL").get(target)
-      : db.prepare("SELECT count(*) AS n FROM memories WHERE target = ? AND project = ?").get(target, project);
+    // failures.md is one global file whose entries carry per-project tags, so the
+    // mirror comparison must count every failure row regardless of project.
+    const row = target === "failure"
+      ? db.prepare("SELECT count(*) AS n FROM memories WHERE target = 'failure'").get()
+      : project === null
+        ? db.prepare("SELECT count(*) AS n FROM memories WHERE target = ? AND project IS NULL").get(target)
+        : db.prepare("SELECT count(*) AS n FROM memories WHERE target = ? AND project = ?").get(target, project);
     return (row as { n: number } | undefined)?.n ?? 0;
   } catch {
     return null;

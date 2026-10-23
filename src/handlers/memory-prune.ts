@@ -51,7 +51,7 @@ export interface PruneOptions {
 
 export function defaultPruneOptions(overrides: Partial<PruneOptions> = {}): PruneOptions {
   return {
-    keepDays: 14,
+    keepDays: 3,
     minHits: 1,
     targets: new Set<PruneTarget>(["failure"]),
     apply: false,
@@ -217,6 +217,9 @@ export function applyPrunePlan(plans: PrunePlan[], archiveDir: string, today = n
     }
   }
 
+  if (plans.length === 0) {
+    return { archiveDir, files: [], removedEntries: 0, removedChars: 0 };
+  }
   if (fs.existsSync(archiveDir)) {
     throw new Error(`archive directory already exists: ${archiveDir}`);
   }
@@ -273,7 +276,8 @@ export function formatPruneReport(result: PruneArchiveResult | { plans: PrunePla
     );
   }
   if (plans.length === 0) {
-    lines.push("  nothing to prune with the current rules");
+    lines.push("  nothing to prune: every entry is protected by the keep rules");
+    lines.push("  (durable category, recalled, merged summary, or inside --keep-days)");
   } else if ("archiveDir" in result) {
     lines.push("");
     lines.push(`  removed ${result.removedEntries} entries / ${result.removedChars} chars`);
@@ -314,7 +318,7 @@ export function parsePruneArgs(args: string): PruneOptions {
       );
     }
   }
-  if (!Number.isFinite(options.keepDays) || options.keepDays < 0) options.keepDays = 14;
+  if (!Number.isFinite(options.keepDays) || options.keepDays < 0) options.keepDays = 3;
   if (!Number.isFinite(options.minHits) || options.minHits < 1) options.minHits = 1;
   return options;
 }
@@ -333,6 +337,11 @@ export function registerMemoryPruneCommand(pi: ExtensionAPI, options: PruneComma
       });
 
       if (!prune.apply) {
+        ctx.ui.notify(formatPruneReport({ plans, dryRun: true }), "info");
+        return;
+      }
+
+      if (plans.length === 0) {
         ctx.ui.notify(formatPruneReport({ plans, dryRun: true }), "info");
         return;
       }
