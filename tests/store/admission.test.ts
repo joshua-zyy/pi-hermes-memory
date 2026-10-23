@@ -5,8 +5,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   decideAdmission,
+  isAlreadyStored,
   normalizeSignature,
   readTraceRecords,
+  stripEntryMetadata,
   summarizeAdmission,
   TRACE_FILE,
 } from "../../src/store/admission.js";
@@ -26,6 +28,13 @@ describe("write admission", () => {
       base,
     );
     assert.notEqual(normalizeSignature("另一条完全不同的内容"), base);
+  });
+
+  it("recognises a duplicate the store already holds, metadata included", () => {
+    const stored = ["未捕获的 spawn 错误 <!-- created=2026-10-01, last=2026-10-02 -->"];
+    assert.equal(isAlreadyStored("未捕获的 spawn 错误", stored), true);
+    assert.equal(isAlreadyStored("另一条内容", stored), false);
+    assert.equal(stripEntryMetadata(stored[0]), "未捕获的 spawn 错误");
   });
 
   it("does nothing in off mode", () => {

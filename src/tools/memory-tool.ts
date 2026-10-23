@@ -9,7 +9,7 @@ import { Type, type TSchema } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MemoryStore } from "../store/memory-store.js";
 import { DatabaseManager } from "../store/db.js";
-import { decideAdmission, type AdmissionConfig, type AdmissionTarget } from "../store/admission.js";
+import { admissionMode, decideAdmission, isAlreadyStored, type AdmissionConfig, type AdmissionTarget } from "../store/admission.js";
 import {
   formatFailureMemoryContent,
   reconcileMarkdownFailureScopes,
@@ -353,24 +353,34 @@ export function registerMemoryTool(
         if (!content) {
           throw new Error("Content is required for 'add' action.");
         }
-        {
-          const memoryCategory = category ?? (rawTarget === "failure" ? "failure" : null);
-          const admission = decideAdmission(
-            {
-              target: rawTarget as AdmissionTarget,
-              project: activeProjectName,
-              category: memoryCategory,
-              text: content,
-            },
-            { storeDir: store_.storageDir, config: admissionConfig },
-          );
-          if (!admission.writeStore) {
-            result = {
-              success: true,
-              target: rawTarget,
-              message: `Deferred to the trace log (${admission.reason}). Repeating the observation promotes it to memory.`,
-            };
-            break;
+        if (admissionMode(admissionConfig) !== "off") {
+          // A duplicate of an entry the store already holds is not a new
+          // observation: skip admission so it cannot inflate the repeat count,
+          // and let the store's own duplicate check answer.
+          const existingEntries = rawTarget === "failure"
+            ? store_.getFailureEntries(3650)
+            : rawTarget === "user"
+              ? store_.getUserEntries()
+              : store_.getMemoryEntries();
+          if (!isAlreadyStored(content, existingEntries)) {
+            const memoryCategory = category ?? (rawTarget === "failure" ? "failure" : null);
+            const admission = decideAdmission(
+              {
+                target: rawTarget as AdmissionTarget,
+                project: activeProjectName,
+                category: memoryCategory,
+                text: content,
+              },
+              { storeDir: store_.storageDir, config: admissionConfig },
+            );
+            if (!admission.writeStore) {
+              result = {
+                success: true,
+                target: rawTarget,
+                message: `Deferred to the trace log (${admission.reason}). Repeating the observation promotes it to memory.`,
+              };
+              break;
+            }
           }
         }
         if (rawTarget === "failure") {

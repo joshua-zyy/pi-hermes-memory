@@ -126,6 +126,23 @@ export function appendTraceRecord(storeDir: string, record: AdmissionRecord): st
   return file;
 }
 
+/** Entry text without the trailing metadata comment. */
+export function stripEntryMetadata(raw: string): string {
+  return raw.replace(/\s*<!--[\s\S]*?-->\s*$/g, "").trim();
+}
+
+/**
+ * True when the store already holds this text.
+ *
+ * A write that the store would reject as a duplicate is not a new observation, so
+ * it must not count towards promotion: re-adding an existing entry is the model
+ * being repetitive, not a lesson recurring.
+ */
+export function isAlreadyStored(text: string, existingEntries: readonly string[]): boolean {
+  const needle = stripEntryMetadata(text);
+  return existingEntries.some((entry) => stripEntryMetadata(entry) === needle);
+}
+
 export function admissionMode(config: AdmissionConfig): AdmissionMode {
   return config.writeAdmission ?? "off";
 }

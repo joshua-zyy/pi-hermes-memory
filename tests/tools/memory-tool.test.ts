@@ -89,11 +89,16 @@ describe("registerMemoryTool", () => {
 
     const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), "admission-tool-"));
     let addCalls = 0;
+    const storedEntries: string[] = [];
     const mockStore = {
       storageDir: storeDir,
-      add: () => {
+      getMemoryEntries: () => storedEntries,
+      getUserEntries: () => [],
+      getFailureEntries: () => [],
+      add: (_target: string, content: string) => {
         addCalls++;
-        return { success: true, target: "memory", entry_count: 1 };
+        storedEntries.push(content);
+        return { success: true, target: "memory", entry_count: storedEntries.length };
       },
     } as unknown as MemoryStore;
 
@@ -127,6 +132,25 @@ describe("registerMemoryTool", () => {
         undefined as any,
       );
       assert.equal(addCalls, 1, "a repeated observation must reach the store");
+      assert.equal(
+        fs.readFileSync(path.join(storeDir, "trace.jsonl"), "utf-8").trim().split("\n").length,
+        2,
+      );
+
+      // A third add of content the store now holds is a duplicate, not a repeat:
+      // it must not be recorded again.
+      await capturedResult.execute(
+        "tc-3",
+        { action: "add", target: "memory", content: "a first sighting" },
+        undefined as any,
+        undefined as any,
+        undefined as any,
+      );
+      assert.equal(
+        fs.readFileSync(path.join(storeDir, "trace.jsonl"), "utf-8").trim().split("\n").length,
+        2,
+        "a store duplicate must not add an admission record",
+      );
     } finally {
       fs.rmSync(storeDir, { recursive: true, force: true });
     }
