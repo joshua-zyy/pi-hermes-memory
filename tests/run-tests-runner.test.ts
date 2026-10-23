@@ -86,6 +86,21 @@ describe("scripts/run-tests.mjs", () => {
     }
   });
 
+  it("treats TEST_ALLOW_FAILURES entries as known failures", async () => {
+    const root = await createRunnerFixture("process.exit(3);\n");
+    try {
+      const result = await runRunner(root, {
+        TEST_TIMEOUT: "0",
+        TEST_ALLOW_FAILURES: "tests/sample.test.ts",
+      });
+      assert.equal(result.code, 0);
+      assert.match(result.stdout, /KNOWN-FAIL \(allowed\): tests\/sample\.test\.ts/);
+      assert.match(result.stdout, /All 0 test files passed \(1 known failure allowed\)/);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects invalid and negative timeout values before running tests", async () => {
     const root = await createRunnerFixture("process.exit(0);\n");
     try {

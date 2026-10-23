@@ -21,6 +21,18 @@ const TIMEOUT_MS = Number(process.env.TEST_TIMEOUT ?? 120) * 1000;
 // without `shell: true` (EINVAL), and shell mode would reintroduce quoting bugs.
 const TSX_CLI = join(root, "node_modules", "tsx", "dist", "cli.mjs");
 
+/**
+ * Files that are known to fail on this platform. They are reported but do not
+ * fail the run, so CI catches new breakage without going red on a backlog.
+ * Format: comma-separated repo-relative paths.
+ */
+const ALLOWED_FAILURES = new Set(
+  (process.env.TEST_ALLOW_FAILURES ?? "")
+    .split(",")
+    .map((entry) => entry.trim().replace(/\\/g, "/"))
+    .filter(Boolean),
+);
+
 if (!Number.isFinite(TIMEOUT_MS) || TIMEOUT_MS < 0) {
   console.error(`Invalid TEST_TIMEOUT: ${process.env.TEST_TIMEOUT} (expected a non-negative number of seconds)`);
   process.exit(2);
@@ -68,6 +80,7 @@ function runTestFile(file) {
 
 const tests = collectTests(join(root, "tests"));
 const failures = [];
+const knownFailures = [];
 let passed = 0;
 
 for (const file of tests) {
@@ -76,6 +89,12 @@ for (const file of tests) {
   const { code, timedOut } = await runTestFile(file);
   if (code === 0) {
     passed++;
+    continue;
+  }
+  const normalised = label.replace(/\\/g, "/");
+  if (ALLOWED_FAILURES.has(normalised)) {
+    knownFailures.push(normalised);
+    console.log(`KNOWN-FAIL (allowed): ${normalised}`);
     continue;
   }
   failures.push(label);
@@ -90,4 +109,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`\nAll ${passed} test files passed`);
+const knownNote = knownFailures.length > 0
+  ? ` (${knownFailures.length} known failure${knownFailures.length === 1 ? "" : "s"} allowed)`
+  : "";
+console.log(`\nAll ${passed} test files passed${knownNote}`);

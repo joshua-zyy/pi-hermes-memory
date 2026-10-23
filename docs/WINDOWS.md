@@ -39,6 +39,13 @@ none of them is caused by the fork's changes.
 | `tests/store/sqlite-lazy-load.test.ts` | assertion failure | Native loader expectations do not match the prebuilt-binary install | Reproduce with a source build before changing expectations |
 | `tests/store/sqlite-native.test.ts` | assertion failure (ABI-mismatch rebuild path) | Rebuild path is untested on Windows and needs `node-gyp` | Decide whether to keep the rebuild path on Windows |
 
+## CI
+
+`.github/workflows/ci.yml` runs a `Windows` job: `npm ci --ignore-scripts`,
+`npm run check`, then `npm test` with `TEST_ALLOW_FAILURES` set to the five known
+failures below. The job fails on any *new* failure, so the backlog cannot grow
+silently — remove a path from the list when its fix lands.
+
 ## Known limitation: migrating while another process holds the database
 
 The migration moves `sessions.db` and its `-wal`/`-shm` sidecars. Windows cannot

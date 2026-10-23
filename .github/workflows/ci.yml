@@ -67,3 +67,32 @@ jobs:
 
       - name: Check for uncommitted changes
         run: git diff --exit-code
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # better-sqlite3 ships N-API prebuilds; the install script would try to
+      # compile with MSVC and fail on the runner image.
+      - run: npm ci --ignore-scripts
+
+      - run: npm run check
+
+      # Known Windows failures are allowed so the job catches new breakage
+      # without going red on the existing backlog (see docs/WINDOWS.md).
+      - name: Tests
+        env:
+          TEST_ALLOW_FAILURES: >-
+            tests/handlers/pi-child-process.test.ts,
+            tests/handlers/skills-command.test.ts,
+            tests/project-rebinding.test.ts,
+            tests/store/sqlite-lazy-load.test.ts,
+            tests/store/sqlite-native.test.ts
+        run: npm test
