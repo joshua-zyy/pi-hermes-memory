@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `/memory-prune`: archive-first deterministic pruning for stores consolidation cannot drain. Keeps durable categories (`preference`/`correction`/`convention`), recalled entries, entries referenced within `--keep-days`, and merged/superseding summaries; everything else is moved verbatim into `<store>/<file>.dropped-entries.md` with a `MANIFEST.md` restore section, then the SQLite mirror is reconciled. Dry run by default, `--apply` writes. A plan that does not reconstruct each file byte-for-byte aborts before anything is written.
 - `/memory-doctor`: read-only health report across every memory store — per-file size against the goal the runtime enforces, SQLite mirror drift (rows vs Markdown entries), and snapshot sidecar count/bytes. Nothing is written; repairs stay explicit (`/memory-sync-markdown`, `/memory-consolidate`).
 
 ## [0.9.11] - 2026-10-22

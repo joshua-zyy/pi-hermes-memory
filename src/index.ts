@@ -41,6 +41,7 @@ import { setupBackgroundReview } from "./handlers/background-review.js";
 import { setupSessionFlush } from "./handlers/session-flush.js";
 import { registerInsightsCommand } from "./handlers/insights.js";
 import { registerMemoryDoctorCommand } from "./handlers/memory-doctor.js";
+import { registerMemoryPruneCommand } from "./handlers/memory-prune.js";
 import { triggerConsolidation, registerConsolidateCommand } from "./handlers/auto-consolidate.js";
 import { setupCorrectionDetector } from "./handlers/correction-detector.js";
 import { registerSkillsCommand } from "./handlers/skills-command.js";
@@ -48,7 +49,7 @@ import { registerInterviewCommand } from "./handlers/interview.js";
 import { registerSwitchProjectCommand } from "./handlers/switch-project.js";
 import { registerIndexSessionsCommand } from "./handlers/index-sessions.js";
 import { registerLearnMemoryCommand } from "./handlers/learn-memory.js";
-import { migrateThenSyncMarkdownMemories, registerSyncMarkdownMemoriesCommand } from "./handlers/sync-markdown-memories.js";
+import { migrateThenSyncMarkdownMemories, registerSyncMarkdownMemoriesCommand, syncMarkdownMemoriesToSqlite } from "./handlers/sync-markdown-memories.js";
 import { registerPreviewContextCommand } from "./handlers/preview-context.js";
 import { registerStandingPinCommand } from "./handlers/standing-pin.js";
 import { isMemoryChildProcess } from "./handlers/pi-child-process.js";
@@ -398,6 +399,16 @@ export default function (pi: ExtensionAPI) {
   registerSwitchProjectCommand(pi, config);
   registerLearnMemoryCommand(pi);
   registerSyncMarkdownMemoriesCommand(memoryPi, dbManager, globalDir, config.projectsMemoryDir, agentRoot);
+  registerMemoryPruneCommand(memoryPi, {
+    config,
+    globalDir,
+    dbManager,
+    store,
+    projectStoreRef,
+    runSync: async () => {
+      await syncMarkdownMemoriesToSqlite(dbManager, globalDir, config.projectsMemoryDir, agentRoot, { force: true });
+    },
+  });
   registerPreviewContextCommand(lazy ? pi : memoryPi, store, projectStoreRef, projectNameRef, config, standingStore);
   if (standingStore) registerStandingPinCommand(pi, standingStore);
 
