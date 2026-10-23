@@ -94,5 +94,7 @@ jobs:
             tests/handlers/skills-command.test.ts,
             tests/project-rebinding.test.ts,
             tests/store/sqlite-lazy-load.test.ts,
-            tests/store/sqlite-native.test.ts
+            tests/store/sqlite-native.test.ts,
+            tests/handlers/sync-markdown-memories.test.ts,
+            tests/store/db.test.ts
         run: npm test
