@@ -96,5 +96,6 @@ jobs:
             tests/store/sqlite-lazy-load.test.ts,
             tests/store/sqlite-native.test.ts,
             tests/handlers/sync-markdown-memories.test.ts,
-            tests/store/db.test.ts
+            tests/store/db.test.ts,
+            tests/store/session-indexer.test.ts
         run: npm test

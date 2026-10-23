@@ -57,6 +57,7 @@ assertion observes it.
 |---|---|---|
 | `tests/handlers/sync-markdown-memories.test.ts` | `reconciliation must wait for the active Markdown mutation` | Replace the sleep-based window with an explicit barrier the test controls |
 | `tests/store/db.test.ts` | `peer should wait for the active recovery owner`; `aborts destructive recovery rename when the recovery lease was stolen mid-flight` | Same: barrier instead of timing |
+| `tests/store/session-indexer.test.ts` | whole file times out at 120s (passes in ~0.4s locally) | Stalls under load on the 2-vCPU runner; passed in earlier runs on the same commit lineage | Pin the wait to an event instead of a timer, or raise the per-file timeout for this file only |
 
 They are in the CI allowlist so the job gates on *new* breakage; remove them from
 `TEST_ALLOW_FAILURES` when the barriers land.
