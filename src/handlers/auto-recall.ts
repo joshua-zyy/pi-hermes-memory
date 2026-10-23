@@ -82,25 +82,47 @@ export function selectRecallCandidates(options: {
   maxEntries: number;
   maxChars: number;
 }): RecallCandidate[] {
-  const tokens = tokenizeQuery(options.query);
+  const texts = options.entries.map((entry) => stripMetadata(entry.raw));
+  // Drop tokens that appear in most entries: CJK bigrams like "问题" or "失败"
+  // match half the store and turned unrelated questions into false recalls.
+  const queryTokens = tokenizeQuery(options.query);
+  // A token carried by more than a tenth of the store (and by at least three
+  // entries) is generic here: CJK bigrams like "问题" matched unrelated
+  // questions and produced false recalls.
+  const genericCeiling = Math.max(2, Math.floor(texts.length * 0.1));
+  const tokens = queryTokens.filter((token) => {
+    let df = 0;
+    for (const text of texts) if (text.toLowerCase().includes(token)) df++;
+    return df > 0 && df <= genericCeiling;
+  });
+  if (tokens.length === 0) return [];
+
+  // A candidate needs two matches and at least one token that is rare in this
+  // store; without the second condition an unrelated question still matched on
+  // generic bigrams.
+  const specific = new Set(queryTokens.filter((token) => {
+    let df = 0;
+    for (const text of texts) if (text.toLowerCase().includes(token)) df++;
+    return df > 0 && df <= 2;
+  }));
   const scored: RecallCandidate[] = [];
-  for (const entry of options.entries) {
-    const text = stripMetadata(entry.raw);
-    if (!text) continue;
+  options.entries.forEach((entry, index) => {
+    const text = texts[index];
+    if (!text) return;
     const score = scoreEntry(tokens, text);
-    if (score < MIN_SCORE) continue;
+    if (score < MIN_SCORE) return;
+    if (![...specific].some((token) => text.toLowerCase().includes(token))) return;
     scored.push({ scope: entry.scope, date: entryDate(entry.raw), text, score });
-  }
+  });
   scored.sort((left, right) => right.score - left.score);
 
   const picked: RecallCandidate[] = [];
-  let used = 0;
   for (const candidate of scored) {
     if (picked.length >= options.maxEntries) break;
-    if (used + candidate.text.length > options.maxChars) continue;
     picked.push(candidate);
-    used += candidate.text.length;
   }
+  // The budget covers the whole block, wrapper lines included.
+  while (picked.length > 0 && formatRecallBlock(picked).length > options.maxChars) picked.pop();
   return picked;
 }
 
