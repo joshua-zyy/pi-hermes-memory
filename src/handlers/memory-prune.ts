@@ -26,17 +26,10 @@ import { MemoryStore } from "../store/memory-store.js";
 import { DatabaseManager } from "../store/db.js";
 import { listMemoryStoreDirs } from "../store/recovery-maintenance.js";
 import { resolveProjectStore, type ProjectStoreRef } from "../project-context.js";
+import { parseRetentionEntry, shouldKeepEntry as shouldKeepRetentionEntry, stripEntryMetadata } from "../store/retention.js";
 import type { MemoryConfig } from "../types.js";
 
 export type PruneTarget = "memory" | "user" | "failure";
-
-/** Categories that carry durable, human-relevant value. */
-const DURABLE_CATEGORIES = new Set(["preference", "correction", "convention"]);
-/** Markers a consolidation merge leaves behind; those entries are the distilled core. */
-const MERGED_MARKERS = ["合并", "取代", "supersedes"];
-
-const META_PATTERN = /<!--\s*created=([^,]+),\s*last=([^,>]+?)(?:,\s*project64=[A-Za-z0-9_-]+)?\s*-->/s;
-const CATEGORY_PATTERN = /^\s*\[([a-z-]+)\]/;
 
 export interface PruneOptions {
   /** Keep entries referenced within this many days. */
@@ -59,14 +52,6 @@ export function defaultPruneOptions(overrides: Partial<PruneOptions> = {}): Prun
   };
 }
 
-export interface PruneEntry {
-  raw: string;
-  created: string;
-  last: string;
-  category: string | null;
-  hits: number;
-}
-
 export interface PrunePlan {
   file: string;
   /** Store directory name, used as the archive subdirectory. */
@@ -85,44 +70,13 @@ export interface PruneArchiveResult {
   removedChars: number;
 }
 
-function datePart(value: string): string {
-  return value.trim().slice(0, 10);
-}
+export {
+  parseRetentionEntry as parsePruneEntry,
+  shouldKeepEntry,
+  type RetentionEntry as PruneEntry,
+  type RetentionOptions,
+} from "../store/retention.js";
 
-function daysSince(value: string, today: Date): number {
-  const parsed = Date.parse(`${datePart(value)}T00:00:00Z`);
-  if (Number.isNaN(parsed)) return Number.POSITIVE_INFINITY;
-  return Math.floor((today.getTime() - parsed) / 86_400_000);
-}
-
-function stripMetadata(raw: string): string {
-  return raw.replace(/\s*<!--[\s\S]*?-->\s*$/, "").trim();
-}
-
-export function parsePruneEntry(raw: string, hits: Map<string, number>): PruneEntry {
-  const meta = META_PATTERN.exec(raw);
-  const text = stripMetadata(raw);
-  const category = CATEGORY_PATTERN.exec(text)?.[1] ?? null;
-  return {
-    raw,
-    created: meta ? datePart(meta[1]) : "",
-    last: meta ? datePart(meta[2]) : "",
-    category,
-    hits: hits.get(text) ?? 0,
-  };
-}
-
-export function shouldKeepEntry(entry: PruneEntry, options: PruneOptions, today = new Date()): boolean {
-  if (entry.category && DURABLE_CATEGORIES.has(entry.category)) return true;
-  if (entry.hits >= Math.max(1, options.minHits)) return true;
-  const text = stripMetadata(entry.raw);
-  if (MERGED_MARKERS.some((marker) => text.includes(marker))) return true;
-  const newest = entry.last || entry.created;
-  if (!newest) return true; // no metadata: never drop something we cannot date
-  return daysSince(newest, today) <= options.keepDays;
-}
-
-/** Files a prune run may touch, per store directory. */
 function targetFiles(dir: string, isGlobal: boolean): Array<{ target: PruneTarget; name: string }> {
   const files: Array<{ target: PruneTarget; name: string }> = [
     { target: "memory", name: "MEMORY.md" },
@@ -181,8 +135,8 @@ export async function buildPrunePlan(options: {
       const kept: string[] = [];
       const dropped: string[] = [];
       for (const raw of raws) {
-        const entry = parsePruneEntry(raw, hits);
-        (shouldKeepEntry(entry, options.prune, today) ? kept : dropped).push(raw);
+        const entry = parseRetentionEntry(raw, hits);
+        (shouldKeepRetentionEntry(entry, options.prune, today) ? kept : dropped).push(raw);
       }
       if (dropped.length === 0) continue;
       plans.push({

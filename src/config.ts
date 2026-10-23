@@ -68,6 +68,10 @@ const DEFAULT_CONFIG: MemoryConfig = {
   failureInjectionMaxAgeDays: DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS,
   failureInjectionMaxEntries: DEFAULT_FAILURE_INJECTION_MAX_ENTRIES,
   writeAdmission: "off",
+  enforceCapacity: false,
+  autoRecall: false,
+  autoRecallMaxEntries: 3,
+  autoRecallMaxChars: 1500,
   admissionMinRepeats: 2,
   admissionWindowDays: 14,
   consolidationChunking: DEFAULT_CONSOLIDATION_CHUNKING,
@@ -158,6 +162,14 @@ export function loadConfig(configPath = DEFAULT_CONFIG_PATH): MemoryConfig {
       }
       if (typeof parsed.consolidationChunking === "boolean") {
         config.consolidationChunking = parsed.consolidationChunking;
+      }
+      if (typeof parsed.enforceCapacity === "boolean") config.enforceCapacity = parsed.enforceCapacity;
+      if (typeof parsed.autoRecall === "boolean") config.autoRecall = parsed.autoRecall;
+      if (typeof parsed.autoRecallMaxEntries === "number" && parsed.autoRecallMaxEntries >= 1) {
+        config.autoRecallMaxEntries = parsed.autoRecallMaxEntries;
+      }
+      if (typeof parsed.autoRecallMaxChars === "number" && parsed.autoRecallMaxChars >= 100) {
+        config.autoRecallMaxChars = parsed.autoRecallMaxChars;
       }
       if (parsed.writeAdmission === "off" || parsed.writeAdmission === "trace" || parsed.writeAdmission === "enforce") {
         config.writeAdmission = parsed.writeAdmission;

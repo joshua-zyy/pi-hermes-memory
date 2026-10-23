@@ -43,6 +43,7 @@ import { registerInsightsCommand } from "./handlers/insights.js";
 import { registerMemoryDoctorCommand } from "./handlers/memory-doctor.js";
 import { registerMemoryPruneCommand } from "./handlers/memory-prune.js";
 import { registerAdmissionCommand } from "./handlers/admission-command.js";
+import { registerAutoRecall } from "./handlers/auto-recall.js";
 import { triggerConsolidation, registerConsolidateCommand } from "./handlers/auto-consolidate.js";
 import { setupCorrectionDetector } from "./handlers/correction-detector.js";
 import { registerSkillsCommand } from "./handlers/skills-command.js";
@@ -396,6 +397,7 @@ export default function (pi: ExtensionAPI) {
   registerInsightsCommand(memoryPi, store, projectStoreRef, projectNameRef, dbManager);
   registerMemoryDoctorCommand(memoryPi, { config, globalDir, dbManager });
   registerAdmissionCommand(memoryPi, { config, store, projectStoreRef });
+  registerAutoRecall(memoryPi, { store, projectStoreRef, projectNameRef, config });
   registerSkillsCommand(pi, skillStore);
   registerInterviewCommand(memoryPi, store);
   registerSwitchProjectCommand(pi, config);

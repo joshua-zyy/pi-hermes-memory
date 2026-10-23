@@ -114,6 +114,17 @@ export interface MemoryConfig {
    * `enforce` defers non-promoted writes to the trace log only.
    */
   writeAdmission?: "off" | "trace" | "enforce";
+  /**
+   * Demote the oldest unprotected entries to `demoted.jsonl` when a store exceeds
+   * its capacity goal. Off by default; policy-only mode never enforces the cap.
+   */
+  enforceCapacity?: boolean;
+  /** Append a bounded recalled-memory block to each request. Default: false */
+  autoRecall?: boolean;
+  /** Maximum entries in that block. Default: 3 */
+  autoRecallMaxEntries?: number;
+  /** Maximum characters in that block. Default: 1500 */
+  autoRecallMaxChars?: number;
   /** Repeats inside the window required to promote a non-durable entry. Default: 2 */
   admissionMinRepeats?: number;
   /** Sliding window, in days, for repeat detection. Default: 14 */

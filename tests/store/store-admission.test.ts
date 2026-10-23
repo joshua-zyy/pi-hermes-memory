@@ -106,3 +106,36 @@ describe("write admission inside an atomic plan", () => {
     }
   });
 });
+
+describe("capacity demotion", () => {
+  it("keeps the store within its goal and never demotes a durable entry", async () => {
+    const capacityDir = await fs.mkdtemp(path.join(os.tmpdir(), "capacity-"));
+    try {
+      const store = new MemoryStore({
+        ...config(),
+        memoryDir: capacityDir,
+        memoryCharLimit: 300,
+        enforceCapacity: true,
+      });
+
+      await store.add("memory", "[correction] always run the migration before deploy");
+      for (let index = 0; index < 12; index++) {
+        await store.add("memory", `[tool-quirk] observation ${index} ${"x".repeat(40)}`);
+      }
+
+      const raw = await fs.readFile(path.join(capacityDir, "MEMORY.md"), "utf-8");
+      assert.ok(raw.length <= 300, `store must stay within its goal, got ${raw.length}`);
+      assert.ok(raw.includes("always run the migration"), "a durable entry must survive demotion");
+
+      const demoted = (await fs.readFile(path.join(capacityDir, "demoted.jsonl"), "utf-8"))
+        .trim()
+        .split(String.fromCharCode(10))
+        .map((line) => JSON.parse(line) as { reason: string; text: string });
+      assert.ok(demoted.length > 0, "overflow must be demoted, not deleted");
+      assert.ok(demoted.every((record) => record.reason === "capacity"));
+      assert.ok(!demoted.some((record) => record.text.includes("always run the migration")));
+    } finally {
+      await fs.rm(capacityDir, { recursive: true, force: true });
+    }
+  });
+});

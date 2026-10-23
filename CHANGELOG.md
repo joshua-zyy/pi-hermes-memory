@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `enforceCapacity` (default off): when a store exceeds its goal after a write, the oldest entries no retention rule protects are demoted to `demoted.jsonl` instead of being deleted; a store made only of protected entries is left over its goal rather than losing durable facts. Retention rules moved to `src/store/retention.ts` so prune and capacity demotion cannot disagree.
+- `autoRecall` (default off): a bounded recalled-memory block appended to each request through Pi's `context` hook — at most `autoRecallMaxEntries` (3) entries and `autoRecallMaxChars` (1500) characters, each line carrying scope and date, marked as recalled low-trust context. The block is added to the request copy only, so it never enters session history and cannot be re-extracted as evidence.
+
 ### Added
 
 - Write-side admission (`writeAdmission: "off" | "trace" | "enforce"`): decisions are made before a write reaches the store. Corrections, preferences and conventions are admitted immediately; everything else must repeat inside `admissionWindowDays` (`admissionMinRepeats`, default 2). `trace` is shadow mode — it logs decisions to `<store>/trace.jsonl` without changing what is written; `enforce` defers first sightings to the log only. The log is append-only and rotated at 8 MB, and the deferred text is retained so it can act as the cold tier later. A write that duplicates an entry the store already holds is not treated as a new observation, so re-adding the same entry cannot inflate the repeat count.

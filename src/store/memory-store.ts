@@ -16,6 +16,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { scanContent } from "./content-scanner.js";
 import { admissionMode, decideAdmission, isAlreadyStored } from "./admission.js";
+import { isProtectedEntry, parseRetentionEntry } from "./retention.js";
 import { normalizeMemoryLookupText } from "./memory-lookup.js";
 import {
   ENTRY_DELIMITER,
@@ -341,9 +342,46 @@ export class MemoryStore {
     entries.push(encoded);
     this.setEntries(target, entries);
     await this.saveToDisk(target);
+    if (this.config.enforceCapacity) await this.demoteToCapacity(target);
     markMutation();
 
     return this.successResponse(target, addedMessage);
+  }
+
+  /**
+   * Bring a store back under its capacity goal by demoting the oldest entries
+   * that no retention rule protects.
+   *
+   * Demotion moves the entry out of the hot store and into `demoted.jsonl`; it is
+   * never a delete, and a store made entirely of protected entries is left over
+   * its goal rather than losing durable facts.
+   */
+  private async demoteToCapacity(target: "memory" | "user" | "failure"): Promise<number> {
+    const limit = this.charLimit(target);
+    const kept = [...this.entriesFor(target)];
+    if (kept.join(ENTRY_DELIMITER).length <= limit) return 0;
+
+    const demoted: string[] = [];
+    const noHits = new Map<string, number>();
+    while (kept.join(ENTRY_DELIMITER).length > limit) {
+      const index = kept.findIndex((raw) => !isProtectedEntry(parseRetentionEntry(raw, noHits)));
+      if (index < 0) break;
+      demoted.push(kept[index]);
+      kept.splice(index, 1);
+    }
+    if (demoted.length === 0) return 0;
+
+    const file = path.join(this.memoryDir, "demoted.jsonl");
+    await fs.mkdir(this.memoryDir, { recursive: true });
+    const stamp = new Date().toISOString();
+    await fs.appendFile(
+      file,
+      demoted.map((raw) => JSON.stringify({ ts: stamp, target, reason: "capacity", text: this.stripMetadata(raw) }) + "\n").join(""),
+      "utf-8",
+    );
+    this.setEntries(target, kept);
+    await this.saveToDisk(target);
+    return demoted.length;
   }
 
   private async addWithConsolidation(
