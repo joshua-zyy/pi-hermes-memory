@@ -19,7 +19,16 @@ export function collectMessageParts(entries: unknown[], recentMessages = 0): str
     if (!text) continue;
 
     const role = (msg as { role?: unknown } | null)?.role;
-    const prefix = role === "user" ? "[USER]" : "[ASSISTANT]";
+    // Tool output and host-injected context are observations, not assertions the
+    // assistant made. Labelling them [ASSISTANT] let a recalled memory or a
+    // command result be re-extracted as if it were new evidence (#226).
+    const prefix = role === "user"
+      ? "[USER]"
+      : role === "toolResult" || role === "bashExecution"
+        ? "[TOOL]"
+        : role === "custom"
+          ? "[CONTEXT]"
+          : "[ASSISTANT]";
     parts.push(`${prefix}: ${text}`);
   }
 

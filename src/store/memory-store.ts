@@ -15,6 +15,7 @@ import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { scanContent } from "./content-scanner.js";
+import { admissionMode, decideAdmission, isAlreadyStored } from "./admission.js";
 import { normalizeMemoryLookupText } from "./memory-lookup.js";
 import {
   ENTRY_DELIMITER,
@@ -226,6 +227,7 @@ export class MemoryStore {
     const failureText = this.buildFailureMemoryText(content, options);
     return this.addWithConsolidation(
       "failure", failureText, options.signal, 1, "Failure memory saved: " + options.category, options.project,
+      options.category,
     );
   }
 
@@ -242,6 +244,47 @@ export class MemoryStore {
       .map((entry) => this.stripMetadata(entry));
   }
 
+  /**
+   * One admission decision for every managed write.
+   *
+   * Living in the store rather than in the tool handler is the point: the
+   * background review, flush, correction and atomic-plan paths all reach the
+   * store directly, so a gate in the tool only covered agent-initiated writes.
+   *
+   * Returns null when the write may proceed.
+   */
+  /** Category tag a failure entry carries in its own text, if any. */
+  private categoryFromText(text: string): string | null {
+    return /^\s*\[([a-z-]+)\]/.exec(text)?.[1] ?? null;
+  }
+
+  private admissionGate(
+    target: "memory" | "user" | "failure",
+    text: string,
+    project: string | undefined,
+    category: string | null,
+  ): { message: string } | null {
+    if (admissionMode(this.config) === "off") return null;
+    // A duplicate the store already holds is not a new observation; let the
+    // duplicate check answer instead of counting it towards promotion.
+    if (isAlreadyStored(text, this.entriesFor(target).map((entry) => this.decodeEntry(entry).text))) {
+      return null;
+    }
+    const outcome = decideAdmission(
+      {
+        target: target === "memory" && project ? "project" : target,
+        project: project ?? null,
+        category,
+        text,
+      },
+      { storeDir: this.memoryDir, config: this.config },
+    );
+    if (outcome.writeStore) return null;
+    return {
+      message: `Deferred to the trace log (${outcome.reason}). Repeating the observation promotes it to memory.`,
+    };
+  }
+
   private async _add(
     target: "memory" | "user" | "failure",
     content: string,
@@ -249,6 +292,7 @@ export class MemoryStore {
     addedMessage: string,
     project: string | undefined,
     markMutation: () => void,
+    category: string | null = null,
   ): Promise<MemoryResult> {
     content = content.trim();
     if (!content) return { success: false, error: "Content cannot be empty." };
@@ -269,6 +313,11 @@ export class MemoryStore {
     });
     if (duplicate) {
       return this.successResponse(target, "Entry already exists (no duplicate added).");
+    }
+
+    const deferred = this.admissionGate(target, content, project, category ?? this.categoryFromText(content));
+    if (deferred) {
+      return this.successResponse(target, deferred.message);
     }
 
     // Encode metadata: both dates = today
@@ -304,10 +353,11 @@ export class MemoryStore {
     retriesLeft: number,
     addedMessage: string,
     project?: string,
+    category: string | null = null,
   ): Promise<MemoryResult> {
     const result = await this.runTargetMutation(
       target,
-      (markMutation) => this._add(target, content, signal, addedMessage, project, markMutation),
+      (markMutation) => this._add(target, content, signal, addedMessage, project, markMutation, category),
       signal,
     );
     if (
@@ -352,7 +402,7 @@ export class MemoryStore {
       return { ...result, error: `${result.error} Auto-consolidation succeeded but reloading memory failed: ${String(err).slice(0, 200)}` };
     }
 
-    const retried = await this.addWithConsolidation(target, content, signal, retriesLeft - 1, addedMessage, project);
+    const retried = await this.addWithConsolidation(target, content, signal, retriesLeft - 1, addedMessage, project, category);
     if (retried.success || !retried.error?.startsWith("Memory at ")) return retried;
     const partialNote = consolidation.partial
       ? ` Consolidation is incomplete: ${consolidation.error ?? "retrigger consolidation to continue"}.`
@@ -442,6 +492,21 @@ export class MemoryStore {
               && (target !== "failure" || decoded.project === normalizedProject);
           })) {
             return { success: false, error: "Memory mutation plan would add a duplicate entry." };
+          }
+          // An atomic plan must not half-commit: if any new fact would be
+          // deferred by admission, the whole plan is refused before its deletes
+          // and replaces are written.
+          const deferred = this.admissionGate(
+            target,
+            normalizedContent,
+            operation.project,
+            operation.category ?? this.categoryFromText(normalizedContent),
+          );
+          if (deferred) {
+            return {
+              success: false,
+              error: `Memory mutation plan contains a deferred new fact (${deferred.message}); nothing was applied.`,
+            };
           }
           plannedEntries.push(this.encodeEntry(normalizedContent, today, today, operation.project));
           continue;

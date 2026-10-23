@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Write admission now runs inside `MemoryStore`, so every managed entry point takes the same decision: the agent tool, background review, session flush, correction capture and atomic mutation plans. Previously the gate lived in the tool handler and the default `reviewTransport: "direct"` path wrote straight to the store. An atomic plan that contains a deferred new fact is refused whole, so its deletes cannot land on their own.
+- Review transcripts label provenance: `[TOOL]` for tool and bash output, `[CONTEXT]` for host-injected blocks. Everything that was not the user used to be labelled `[ASSISTANT]`, which let recalled memory and command output be re-extracted as new evidence (#226). The review prompt now states that only `[USER]` text is first-hand evidence.
+
 - Skill rewrites preserve frontmatter fields this store does not own (`disable-model-invocation`, `license`, `allowed-tools`, ...). `formatFrontmatter` used to regenerate SKILL.md from a fixed field list, so an edit, patch or cross-device move silently made a hidden skill model-visible.
 
 ### Added

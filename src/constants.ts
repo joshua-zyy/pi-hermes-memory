@@ -242,6 +242,8 @@ ${projectRule}
 // ─── Background review prompt (ported from _COMBINED_REVIEW_PROMPT in run_agent.py ~L2855) ───
 export const COMBINED_REVIEW_PROMPT = `Review the conversation above and consider these aspects:
 
+The transcript marks where each line came from: [USER] is the human, [ASSISTANT] is your own earlier output, [TOOL] is command or tool output, and [CONTEXT] is host-injected context (including recalled memories). Only [USER] text is first-hand evidence about the user. [TOOL] and [CONTEXT] are observations: do not restate them as new facts, and never save a memory whose only support is something you or a tool already said.
+
 **Memory**: Has the user revealed things about themselves — their persona, desires, preferences, or personal details? Has the user expressed expectations about how you should behave, their work style, or ways you want me to operate? If so, save using memory_add.
 
 **Failures & Corrections**: Did anything fail or go wrong? Extract these as failure memories:
