@@ -397,7 +397,7 @@ export default function (pi: ExtensionAPI) {
   registerInsightsCommand(memoryPi, store, projectStoreRef, projectNameRef, dbManager);
   registerMemoryDoctorCommand(memoryPi, { config, globalDir, dbManager });
   registerAdmissionCommand(memoryPi, { config, store, projectStoreRef });
-  registerAutoRecall(memoryPi, { store, projectStoreRef, projectNameRef, config });
+  registerAutoRecall(memoryPi, { dbManager, store, projectStoreRef, projectNameRef, config });
   registerSkillsCommand(pi, skillStore);
   registerInterviewCommand(memoryPi, store);
   registerSwitchProjectCommand(pi, config);

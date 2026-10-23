@@ -17,6 +17,8 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { MemoryStore } from "../store/memory-store.js";
+import { searchMemories } from "../store/sqlite-memory-store.js";
+import type { DatabaseManager } from "../store/db.js";
 import { resolveProjectStore, type ProjectNameRef, type ProjectStoreRef } from "../project-context.js";
 import { getMessageText } from "../types.js";
 import type { MemoryConfig } from "../types.js";
@@ -28,6 +30,7 @@ const DEFAULT_MAX_CHARS = 1500;
 const MIN_SCORE = 2;
 
 export interface AutoRecallOptions {
+  dbManager: DatabaseManager | null;
   store: MemoryStore;
   projectStoreRef: ProjectStoreRef;
   projectNameRef: ProjectNameRef;
@@ -139,29 +142,52 @@ export function formatRecallBlock(candidates: RecallCandidate[]): string {
   return lines.join("\n");
 }
 
-/** Build the block for one user message, or "" when nothing is relevant. */
+/**
+ * Build the block for one user message, or "" when nothing is relevant.
+ *
+ * Retrieval is the same FTS5 index `memory_search` uses: the hand-rolled CJK
+ * matcher this replaced returned nothing for relevant questions and injected
+ * unrelated entries for generic ones.
+ */
 export function buildRecallBlock(options: {
   query: string;
-  store: MemoryStore;
-  projectStore?: MemoryStore | null;
+  dbManager: DatabaseManager | null;
   projectName?: string | null;
   config: Pick<MemoryConfig, "autoRecallMaxEntries" | "autoRecallMaxChars">;
 }): string {
-  const entries: Array<{ scope: string; raw: string }> = [];
-  for (const raw of options.store.getMemoryEntries()) entries.push({ scope: "global", raw });
-  for (const raw of options.store.getFailureEntries(30)) entries.push({ scope: "failure", raw });
-  if (options.projectStore && options.projectName) {
-    for (const raw of options.projectStore.getMemoryEntries()) {
-      entries.push({ scope: `project:${options.projectName}`, raw });
-    }
+  if (!options.dbManager) return "";
+  const maxEntries = options.config.autoRecallMaxEntries ?? DEFAULT_MAX_ENTRIES;
+  const maxChars = options.config.autoRecallMaxChars ?? DEFAULT_MAX_CHARS;
+  if (!options.query.trim()) return "";
+
+  let rows;
+  try {
+    rows = searchMemories(options.dbManager, options.query, { limit: Math.max(10, maxEntries * 4) });
+  } catch {
+    return ""; // a broken index must never break the request
   }
-  const candidates = selectRecallCandidates({
-    entries,
-    query: options.query,
-    maxEntries: options.config.autoRecallMaxEntries ?? DEFAULT_MAX_ENTRIES,
-    maxChars: options.config.autoRecallMaxChars ?? DEFAULT_MAX_CHARS,
-  });
-  return formatRecallBlock(candidates);
+
+  const seen = new Set<string>();
+  const candidates: RecallCandidate[] = [];
+  for (const row of rows) {
+    // Global entries plus the active project; other projects must never leak.
+    if (row.project !== null && row.project !== options.projectName) continue;
+    const text = row.content.trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    candidates.push({
+      scope: row.project ? `project:${row.project}` : "global",
+      date: (row.lastReferenced || row.created || "").slice(0, 10),
+      text,
+      score: 0,
+    });
+    if (candidates.length >= maxEntries) break;
+  }
+
+  const picked = candidates.slice(0, maxEntries);
+  // The budget covers the whole block, wrapper lines included.
+  while (picked.length > 0 && formatRecallBlock(picked).length > maxChars) picked.pop();
+  return formatRecallBlock(picked);
 }
 
 export function registerAutoRecall(pi: ExtensionAPI, options: AutoRecallOptions): void {
@@ -180,8 +206,7 @@ export function registerAutoRecall(pi: ExtensionAPI, options: AutoRecallOptions)
 
     const block = buildRecallBlock({
       query,
-      store: options.store,
-      projectStore: resolveProjectStore(options.projectStoreRef),
+      dbManager: options.dbManager,
       projectName: typeof options.projectNameRef === "function" ? options.projectNameRef() : options.projectNameRef,
       config: options.config,
     });
