@@ -51,7 +51,7 @@ describe("memory doctor", () => {
         addMemory(dbManager, "project-tagged failure", "failure", "proj");
         addMemory(dbManager, "eeee", "memory", "proj");
 
-        const report = await collectDoctorReport({ config: config(projectsRoot), globalDir, dbManager });
+        const report = await collectDoctorReport({ config: config(projectsRoot), globalDir, dbManager, piSkillsDir: path.join(root, "pi-skills") });
         const globalMemory = report.rows.find((row) => row.label === "(global) memory");
         const globalFailure = report.rows.find((row) => row.label === "(global) failure");
         const projectMemory = report.rows.find((row) => row.label === "proj memory");
@@ -115,7 +115,7 @@ describe("memory doctor", () => {
         addMemory(dbManager, "stale row that no longer exists in markdown", "memory");
         addMemory(dbManager, "another stale row", "memory");
 
-        const report = await collectDoctorReport({ config: config(projectsRoot), globalDir, dbManager });
+        const report = await collectDoctorReport({ config: config(projectsRoot), globalDir, dbManager, piSkillsDir: path.join(root, "pi-skills") });
         const globalMemory = report.rows.find((row) => row.label === "(global) memory");
         assert.ok(globalMemory);
         assert.ok(globalMemory.overGoal > 0, "store must be over its goal");
@@ -130,6 +130,93 @@ describe("memory doctor", () => {
       } finally {
         dbManager.close();
       }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports how many skills the model can pick and what they cost", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "doctor-"));
+    const globalDir = path.join(root, "global");
+    const projectsRoot = path.join(root, "projects");
+    const NL = String.fromCharCode(10);
+    const writeSkill = (dir: string, frontmatter: string[]): void => {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "SKILL.md"), ["---", ...frontmatter, "---", "# Body", ""].join(NL), "utf-8");
+    };
+    try {
+      fs.mkdirSync(globalDir, { recursive: true });
+      fs.mkdirSync(projectsRoot, { recursive: true });
+      writeSkill(path.join(globalDir, "skills", "visible-a"), [
+        'name: "visible-a"',
+        `description: "${"x".repeat(100)}"`,
+      ]);
+      writeSkill(path.join(globalDir, "skills", "hidden-b"), [
+        'name: "hidden-b"',
+        'description: "hidden helper"',
+        "disable-model-invocation: true",
+      ]);
+      writeSkill(path.join(globalDir, "skills", "no-desc"), ['name: "no-desc"']);
+      writeSkill(path.join(projectsRoot, "proj", "skills", "proj-a"), [
+        'name: "proj-a"',
+        'description: "project helper"',
+      ]);
+
+      const report = await collectDoctorReport({
+        config: config(projectsRoot),
+        globalDir,
+        dbManager: null,
+        piSkillsDir: path.join(root, "pi-skills"),
+      });
+
+      const extension = report.skills.roots.find((entry) => entry.label === "extension");
+      assert.ok(extension, "extension skill root must be reported");
+      assert.equal(extension.total, 3);
+      assert.equal(extension.visible, 2);
+      assert.equal(extension.hidden, 1);
+      assert.equal(extension.missingDescription, 1);
+      assert.equal(extension.visibleChars, 100);
+
+      const project = report.skills.roots.find((entry) => entry.label === "project:proj");
+      assert.ok(project);
+      assert.equal(project.visible, 1);
+      assert.equal(project.visibleChars, "project helper".length);
+
+      assert.equal(report.skills.totals.total, 4);
+      assert.equal(report.skills.totals.visible, 3);
+
+      const text = formatDoctorReport(report);
+      assert.match(text, /skills \(model-visible index\)/);
+      assert.match(text, /extension/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("warns when the visible skill index grows past its budget", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "doctor-"));
+    const globalDir = path.join(root, "global");
+    const projectsRoot = path.join(root, "projects");
+    const NL = String.fromCharCode(10);
+    try {
+      fs.mkdirSync(globalDir, { recursive: true });
+      fs.mkdirSync(projectsRoot, { recursive: true });
+      const big = path.join(globalDir, "skills", "big");
+      fs.mkdirSync(big, { recursive: true });
+      fs.writeFileSync(
+        path.join(big, "SKILL.md"),
+        ["---", 'name: "big"', `description: "${"y".repeat(8100)}"`, "---", "# Body", ""].join(NL),
+        "utf-8",
+      );
+
+      const report = await collectDoctorReport({
+        config: config(projectsRoot),
+        globalDir,
+        dbManager: null,
+        piSkillsDir: path.join(root, "pi-skills"),
+      });
+      assert.ok(report.skills.totals.visibleChars > 8000);
+      assert.match(report.warnings.join(String.fromCharCode(10)), /model-visible skills spend/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

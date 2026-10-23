@@ -15,6 +15,8 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ENTRY_DELIMITER } from "../constants.js";
 import { listMemoryStoreDirs } from "../store/recovery-maintenance.js";
+import { parseFrontmatter } from "../store/skill-utils.js";
+import { AGENT_ROOT, resolveProjectsRoot } from "../paths.js";
 import { DatabaseManager } from "../store/db.js";
 import type { MemoryConfig } from "../types.js";
 
@@ -47,6 +49,7 @@ export interface DoctorStore {
 
 export interface DoctorReport {
   mode: string;
+  skills: SkillStats;
   limits: { memory: number; user: number; failure: number; project: number };
   stores: DoctorStore[];
   rows: DoctorRow[];
@@ -54,10 +57,32 @@ export interface DoctorReport {
   warnings: string[];
 }
 
+/** Warn when the model-visible skill index grows past this. */
+const SKILL_INDEX_WARN_CHARS = 8000;
+
+export interface SkillRootStats {
+  /** Human label for the directory that was scanned. */
+  label: string;
+  dir: string;
+  total: number;
+  visible: number;
+  hidden: number;
+  /** Description characters of the skills the model can pick automatically. */
+  visibleChars: number;
+  missingDescription: number;
+}
+
+export interface SkillStats {
+  roots: SkillRootStats[];
+  totals: { total: number; visible: number; hidden: number; visibleChars: number };
+}
+
 export interface DoctorOptions {
   config: MemoryConfig;
   globalDir: string;
   dbManager: DatabaseManager | null;
+  /** Pi's own skills root; injectable so tests do not read the real home. */
+  piSkillsDir?: string;
 }
 
 function readEntries(file: string): { entries: number; chars: number } {
@@ -113,6 +138,86 @@ function mirrorCount(dbManager: DatabaseManager | null, target: Target, project:
 }
 
 /** Collect the report. Exported for tests; the command is a thin wrapper. */
+function scanSkillRoot(label: string, dir: string): SkillRootStats | null {
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const stats: SkillRootStats = { label, dir, total: 0, visible: 0, hidden: 0, visibleChars: 0, missingDescription: 0 };
+  for (const name of names) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(path.join(dir, name, "SKILL.md"), "utf-8");
+    } catch {
+      continue;
+    }
+    const { meta } = parseFrontmatter(raw);
+    const description = (meta.description ?? "").trim();
+    const hidden = /^(true|yes|1)$/i.test((meta["disable-model-invocation"] ?? "").trim());
+    stats.total++;
+    if (hidden) stats.hidden++;
+    else {
+      stats.visible++;
+      stats.visibleChars += description.length;
+    }
+    if (!description) stats.missingDescription++;
+  }
+  return stats;
+}
+
+/**
+ * Count the skills the model can pick automatically.
+ *
+ * Pi only sees name plus description in the prompt, and `disable-model-invocation`
+ * keeps a skill out of that index entirely. Reporting visible count and visible
+ * description characters is what makes "the skill library is bloated" a number
+ * instead of a feeling.
+ */
+export function collectSkillStats(options: {
+  config: MemoryConfig;
+  globalDir: string;
+  /** Pi's own skills root; injectable so tests do not read the real home. */
+  piSkillsDir?: string;
+}): SkillStats {
+  const roots: SkillRootStats[] = [];
+  const push = (label: string, dir: string): void => {
+    const stats = scanSkillRoot(label, dir);
+    if (stats && stats.total > 0) roots.push(stats);
+  };
+
+  push("extension", path.join(options.globalDir, "skills"));
+
+  const configured = options.config.projectsMemoryDir;
+  const projectsRoot = configured && path.isAbsolute(configured)
+    ? configured
+    : resolveProjectsRoot(configured);
+  let projectNames: string[] = [];
+  try {
+    projectNames = fs.readdirSync(projectsRoot);
+  } catch {
+    projectNames = [];
+  }
+  for (const name of projectNames) {
+    if (name.startsWith(".") || name === "skills") continue;
+    push(`project:${name}`, path.join(projectsRoot, name, "skills"));
+  }
+
+  push("pi", options.piSkillsDir ?? path.join(AGENT_ROOT, "skills"));
+
+  const totals = roots.reduce(
+    (acc, root) => ({
+      total: acc.total + root.total,
+      visible: acc.visible + root.visible,
+      hidden: acc.hidden + root.hidden,
+      visibleChars: acc.visibleChars + root.visibleChars,
+    }),
+    { total: 0, visible: 0, hidden: 0, visibleChars: 0 },
+  );
+  return { roots, totals };
+}
+
 export async function collectDoctorReport(options: DoctorOptions): Promise<DoctorReport> {
   const { config, globalDir, dbManager } = options;
   const limits = {
@@ -171,8 +276,16 @@ export async function collectDoctorReport(options: DoctorOptions): Promise<Docto
     }
   }
 
+  const skills = collectSkillStats({ config, globalDir, piSkillsDir: options.piSkillsDir });
+  if (skills.totals.visibleChars > SKILL_INDEX_WARN_CHARS) {
+    warnings.push(
+      `skills: ${skills.totals.visible} model-visible skills spend ${skills.totals.visibleChars} description chars (budget ${SKILL_INDEX_WARN_CHARS}) — hide or merge some`,
+    );
+  }
+
   return {
     mode: config.memoryMode,
+    skills,
     limits,
     stores,
     rows,
@@ -216,6 +329,21 @@ export function formatDoctorReport(report: DoctorReport): string {
   lines.push(
     `  ${"TOTAL".padEnd(LABEL_WIDTH)}${pad(report.totals.chars, 8)}${pad("-", 8)}${pad("-", 8)}${pad(report.totals.entries, 6)}${pad(report.totals.mirrorRows, 7)}`,
   );
+  lines.push("");
+  lines.push("  skills (model-visible index)");
+  lines.push(`  ${"root".padEnd(LABEL_WIDTH)}${pad("total", 8)}${pad("visible", 8)}${pad("hidden", 8)}${pad("desc", 9)}`);
+  for (const root of report.skills.roots) {
+    lines.push(
+      `  ${root.label.padEnd(LABEL_WIDTH)}${pad(root.total, 8)}${pad(root.visible, 8)}${pad(root.hidden, 8)}${pad(root.visibleChars, 9)}`,
+    );
+  }
+  if (report.skills.roots.length === 0) {
+    lines.push("  (no skills found)");
+  } else if (report.skills.roots.length > 1) {
+    lines.push(
+      `  ${"TOTAL".padEnd(LABEL_WIDTH)}${pad(report.skills.totals.total, 8)}${pad(report.skills.totals.visible, 8)}${pad(report.skills.totals.hidden, 8)}${pad(report.skills.totals.visibleChars, 9)}`,
+    );
+  }
   lines.push("");
   if (report.warnings.length === 0) {
     lines.push("  ✅ no findings");
