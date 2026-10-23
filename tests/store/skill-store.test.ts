@@ -426,6 +426,31 @@ describe("SkillStore", { concurrency: 1 }, () => {
     });
   });
 
+  describe("foreign frontmatter", () => {
+    it("keeps disable-model-invocation across edit, patch and move", async () => {
+      const store = await makeStore();
+      const created = await store.create("hidden-skill", "Hidden helper", "## Procedure\n1. Do it", "global");
+      const doc = await store.loadSkill(created.skillId!);
+      const file = doc!.path;
+
+      const raw = await fs.readFile(file, "utf-8");
+      assert.ok(!raw.includes("disable-model-invocation"));
+      const withFlag = raw.replace("---\n", "---\ndisable-model-invocation: true\n");
+      await fs.writeFile(file, withFlag, "utf-8");
+
+      await store.edit(created.skillId!, "Hidden helper v2", "");
+      await store.patch(created.skillId!, "Verification", "Run the suite");
+      await store.move(created.skillId!, "project");
+
+      const moved = path.join(PROJECT_SKILLS_DIR, "hidden-skill", "SKILL.md");
+      const afterMove = await fs.readFile(moved, "utf-8");
+      assert.ok(
+        afterMove.includes("disable-model-invocation: true"),
+        "a rewrite must not drop a field Pi honours but this store never sets",
+      );
+    });
+  });
+
   describe("move()", () => {
     it("moves a global skill into the active project scope", async () => {
       const store = await makeStore();

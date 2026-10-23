@@ -40,7 +40,35 @@ function yamlDoubleQuoted(value: string): string {
   return JSON.stringify(value);
 }
 
-export function formatFrontmatter(doc: Pick<SkillDocument, "name" | "displayName" | "description" | "version" | "created" | "updated" | "body">): string {
+/** Keys this store owns; everything else is carried through untouched. */
+export const MANAGED_FRONTMATTER_KEYS = new Set(["name", "description", "version", "created", "updated", "display_name"]);
+
+/**
+ * Frontmatter fields this store does not own, so a rewrite can put them back.
+ *
+ * Pi reads fields such as `disable-model-invocation` straight from SKILL.md; a
+ * rewrite that emitted only the managed keys would silently make a hidden skill
+ * model-visible (and drop `license`, `allowed-tools`, ... the same way).
+ */
+export function extractPreservedMeta(meta: Record<string, string>): Record<string, string> {
+  const preserved: Record<string, string> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (!MANAGED_FRONTMATTER_KEYS.has(key)) preserved[key] = value;
+  }
+  return preserved;
+}
+
+/** Booleans and numbers must stay unquoted or YAML hands them back as strings. */
+function yamlScalarFor(key: string, value: string): string {
+  const trimmed = value.trim();
+  if (/^(true|false|null|-?[0-9]+(?:[.][0-9]+)?)$/.test(trimmed)) return `${key}: ${trimmed}`;
+  return `${key}: ${yamlDoubleQuoted(trimmed)}`;
+}
+
+export function formatFrontmatter(
+  doc: Pick<SkillDocument, "name" | "displayName" | "description" | "version" | "created" | "updated" | "body">,
+  preservedMeta: Record<string, string> = {},
+): string {
   const lines = [
     "---",
     `name: ${yamlDoubleQuoted(doc.name)}`,
@@ -52,6 +80,11 @@ export function formatFrontmatter(doc: Pick<SkillDocument, "name" | "displayName
 
   if (doc.displayName && doc.displayName.trim() && doc.displayName.trim() !== doc.name) {
     lines.push(`display_name: ${yamlDoubleQuoted(doc.displayName.trim())}`);
+  }
+
+  for (const [key, value] of Object.entries(preservedMeta)) {
+    if (MANAGED_FRONTMATTER_KEYS.has(key)) continue;
+    lines.push(yamlScalarFor(key, value));
   }
 
   lines.push("---", doc.body);

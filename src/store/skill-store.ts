@@ -11,6 +11,7 @@ import { scanContent } from "./content-scanner.js";
 import {
   buildSkillId,
   exists,
+  extractPreservedMeta,
   formatFrontmatter,
   jaccardSimilarity,
   parseFrontmatter,
@@ -266,7 +267,7 @@ export class SkillStore {
         };
 
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
-        await this.atomicWrite(targetPath, formatFrontmatter(skillDoc));
+        await this.atomicWrite(targetPath, formatFrontmatter(skillDoc, extractPreservedMeta(parsed.meta)));
         result.migrated++;
       } catch (error) {
         result.warnings.push(`${file}: ${error instanceof Error ? error.message : String(error)}`);
@@ -311,7 +312,7 @@ export class SkillStore {
         };
 
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
-        await this.atomicWrite(targetPath, formatFrontmatter(skillDoc));
+        await this.atomicWrite(targetPath, formatFrontmatter(skillDoc, extractPreservedMeta(parsed.meta)));
         await fs.rm(legacyPath, { force: true });
         result.migrated++;
       } catch (error) {
@@ -511,7 +512,7 @@ export class SkillStore {
       created: doc.created,
       updated: today(),
       body: result.join("\n").trim(),
-    }));
+    }, await this.preservedMetaFor(doc.path)));
 
     return {
       success: true,
@@ -547,7 +548,7 @@ export class SkillStore {
       created: doc.created,
       updated: today(),
       body: newBody,
-    }));
+    }, await this.preservedMetaFor(doc.path)));
 
     return {
       success: true,
@@ -658,7 +659,7 @@ export class SkillStore {
       created: doc.created,
       updated: doc.updated,
       body: doc.body,
-    }));
+    }, await this.preservedMetaFor(doc.path)));
 
     try {
       await fs.unlink(doc.path);
@@ -917,6 +918,22 @@ export class SkillStore {
       created: doc.created,
       updated: doc.updated,
     };
+  }
+
+  /**
+   * Frontmatter fields this store does not own, read back from disk.
+   *
+   * Rewrites happen on edit, patch and cross-device move; without this, a field
+   * Pi honours but this store never sets (`disable-model-invocation`) would be
+   * dropped by the next write.
+   */
+  private async preservedMetaFor(filePath: string): Promise<Record<string, string>> {
+    try {
+      const raw = await fs.readFile(filePath, "utf-8");
+      return extractPreservedMeta(parseFrontmatter(raw).meta);
+    } catch {
+      return {};
+    }
   }
 
   private async atomicWrite(filePath: string, content: string): Promise<void> {

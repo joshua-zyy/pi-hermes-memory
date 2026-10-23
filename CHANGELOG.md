@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Skill rewrites preserve frontmatter fields this store does not own (`disable-model-invocation`, `license`, `allowed-tools`, ...). `formatFrontmatter` used to regenerate SKILL.md from a fixed field list, so an edit, patch or cross-device move silently made a hidden skill model-visible.
+
+### Added
+
 ### Added
 
 - Write-side admission (`writeAdmission: "off" | "trace" | "enforce"`): decisions are made before a write reaches the store. Corrections, preferences and conventions are admitted immediately; everything else must repeat inside `admissionWindowDays` (`admissionMinRepeats`, default 2). `trace` is shadow mode — it logs decisions to `<store>/trace.jsonl` without changing what is written; `enforce` defers first sightings to the log only. The log is append-only and rotated at 8 MB, and the deferred text is retained so it can act as the cold tier later. A write that duplicates an entry the store already holds is not treated as a new observation, so re-adding the same entry cannot inflate the repeat count.
