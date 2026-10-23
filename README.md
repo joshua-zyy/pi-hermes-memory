@@ -453,6 +453,7 @@ This means skills build up naturally over time without you having to ask.
 | Command | What it does |
 |---|---|
 | `/memory-insights` | Shows everything stored in memory and user profile |
+| `/memory-doctor` | Read-only health check: every store's size vs its goal, SQLite mirror drift, and snapshot cost |
 | `/memory-skills` | Opens an interactive skills manager for search, multi-select, move, and delete |
 | `/memory-consolidate` | Manually trigger memory consolidation to free space |
 | `/memory-interview` | Answer a few questions to pre-fill your user profile |

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `/memory-doctor`: read-only health report across every memory store — per-file size against the goal the runtime enforces, SQLite mirror drift (rows vs Markdown entries), and snapshot sidecar count/bytes. Nothing is written; repairs stay explicit (`/memory-sync-markdown`, `/memory-consolidate`).
+
 ## [0.9.11] - 2026-10-22
 
 ### Changed

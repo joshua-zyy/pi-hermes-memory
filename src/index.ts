@@ -40,6 +40,7 @@ import { registerMemorySearchTool } from "./tools/memory-search-tool.js";
 import { setupBackgroundReview } from "./handlers/background-review.js";
 import { setupSessionFlush } from "./handlers/session-flush.js";
 import { registerInsightsCommand } from "./handlers/insights.js";
+import { registerMemoryDoctorCommand } from "./handlers/memory-doctor.js";
 import { triggerConsolidation, registerConsolidateCommand } from "./handlers/auto-consolidate.js";
 import { setupCorrectionDetector } from "./handlers/correction-detector.js";
 import { registerSkillsCommand } from "./handlers/skills-command.js";
@@ -391,6 +392,7 @@ export default function (pi: ExtensionAPI) {
 
   // ── 9. Register commands ──
   registerInsightsCommand(memoryPi, store, projectStoreRef, projectNameRef, dbManager);
+  registerMemoryDoctorCommand(memoryPi, { config, globalDir, dbManager });
   registerSkillsCommand(pi, skillStore);
   registerInterviewCommand(memoryPi, store);
   registerSwitchProjectCommand(pi, config);
