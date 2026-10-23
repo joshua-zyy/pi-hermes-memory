@@ -108,6 +108,16 @@ export interface MemoryConfig {
    * until explicitly enabled. Provisional pending reproduction of the
    * original timeout on a faster model.
    */
+  /**
+   * Write-side admission for new memories: `off` (default) keeps today's
+   * behaviour, `trace` decides and logs without changing what is written, and
+   * `enforce` defers non-promoted writes to the trace log only.
+   */
+  writeAdmission?: "off" | "trace" | "enforce";
+  /** Repeats inside the window required to promote a non-durable entry. Default: 2 */
+  admissionMinRepeats?: number;
+  /** Sliding window, in days, for repeat detection. Default: 14 */
+  admissionWindowDays?: number;
   consolidationChunking?: boolean;
   consolidationChunkChars?: number;
   /**

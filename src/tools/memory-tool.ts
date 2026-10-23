@@ -9,6 +9,7 @@ import { Type, type TSchema } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MemoryStore } from "../store/memory-store.js";
 import { DatabaseManager } from "../store/db.js";
+import { decideAdmission, type AdmissionConfig, type AdmissionTarget } from "../store/admission.js";
 import {
   formatFailureMemoryContent,
   reconcileMarkdownFailureScopes,
@@ -285,6 +286,7 @@ export function registerMemoryTool(
   dbManager: DatabaseManager | null = null,
   projectName: ProjectNameRef = null,
   bindProjectFromCwd?: (cwd?: string) => void | Promise<void>,
+  admissionConfig: AdmissionConfig = {},
 ): (candidate: MemoryStore | null) => void {
   const reconciledStores = new WeakSet<MemoryStore>();
   const attachMutationObserver = (candidate: MemoryStore | null, isProjectStore = false): void => {
@@ -350,6 +352,26 @@ export function registerMemoryTool(
       case "add":
         if (!content) {
           throw new Error("Content is required for 'add' action.");
+        }
+        {
+          const memoryCategory = category ?? (rawTarget === "failure" ? "failure" : null);
+          const admission = decideAdmission(
+            {
+              target: rawTarget as AdmissionTarget,
+              project: activeProjectName,
+              category: memoryCategory,
+              text: content,
+            },
+            { storeDir: store_.storageDir, config: admissionConfig },
+          );
+          if (!admission.writeStore) {
+            result = {
+              success: true,
+              target: rawTarget,
+              message: `Deferred to the trace log (${admission.reason}). Repeating the observation promotes it to memory.`,
+            };
+            break;
+          }
         }
         if (rawTarget === "failure") {
           const memoryCategory = category ?? "failure";

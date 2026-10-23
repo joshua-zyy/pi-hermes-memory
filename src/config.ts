@@ -67,6 +67,9 @@ const DEFAULT_CONFIG: MemoryConfig = {
   failureInjectionEnabled: true,
   failureInjectionMaxAgeDays: DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS,
   failureInjectionMaxEntries: DEFAULT_FAILURE_INJECTION_MAX_ENTRIES,
+  writeAdmission: "off",
+  admissionMinRepeats: 2,
+  admissionWindowDays: 14,
   consolidationChunking: DEFAULT_CONSOLIDATION_CHUNKING,
   consolidationChunkChars: DEFAULT_CONSOLIDATION_CHUNK_CHARS,
   consolidationTimeoutMs: DEFAULT_CONSOLIDATION_TIMEOUT_MS,
@@ -155,6 +158,15 @@ export function loadConfig(configPath = DEFAULT_CONFIG_PATH): MemoryConfig {
       }
       if (typeof parsed.consolidationChunking === "boolean") {
         config.consolidationChunking = parsed.consolidationChunking;
+      }
+      if (parsed.writeAdmission === "off" || parsed.writeAdmission === "trace" || parsed.writeAdmission === "enforce") {
+        config.writeAdmission = parsed.writeAdmission;
+      }
+      if (typeof parsed.admissionMinRepeats === "number" && parsed.admissionMinRepeats >= 2) {
+        config.admissionMinRepeats = parsed.admissionMinRepeats;
+      }
+      if (typeof parsed.admissionWindowDays === "number" && parsed.admissionWindowDays >= 1) {
+        config.admissionWindowDays = parsed.admissionWindowDays;
       }
       if (typeof parsed.usageHitTrackingEnabled === "boolean") {
         config.usageHitTrackingEnabled = parsed.usageHitTrackingEnabled;

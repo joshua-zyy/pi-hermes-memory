@@ -79,6 +79,59 @@ describe("registerMemoryTool", () => {
     }
   });
 
+  it("defers a first sighting instead of writing when admission is enforced", async () => {
+    let capturedResult: any;
+    const mockPi = {
+      registerTool: (def: any) => {
+        if (!capturedResult || def.name === "memory_add") capturedResult = def;
+      },
+    } as unknown as ExtensionAPI;
+
+    const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), "admission-tool-"));
+    let addCalls = 0;
+    const mockStore = {
+      storageDir: storeDir,
+      add: () => {
+        addCalls++;
+        return { success: true, target: "memory", entry_count: 1 };
+      },
+    } as unknown as MemoryStore;
+
+    try {
+      registerMemoryTool(mockPi, mockStore, null, null, null, undefined, {
+        writeAdmission: "enforce",
+        admissionMinRepeats: 2,
+      });
+      const result = await capturedResult.execute(
+        "tc-1",
+        { action: "add", target: "memory", content: "a first sighting" },
+        undefined as any,
+        undefined as any,
+        undefined as any,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      assert.equal(parsed.success, true);
+      assert.match(parsed.message, /Deferred to the trace log/);
+      assert.equal(addCalls, 0, "the store must not be written for a deferred entry");
+
+      const trace = fs.readFileSync(path.join(storeDir, "trace.jsonl"), "utf-8").trim().split("\n");
+      assert.equal(trace.length, 1);
+      assert.equal(JSON.parse(trace[0]).decision, "defer");
+
+      // The second sighting promotes and writes.
+      await capturedResult.execute(
+        "tc-2",
+        { action: "add", target: "memory", content: "a first sighting" },
+        undefined as any,
+        undefined as any,
+        undefined as any,
+      );
+      assert.equal(addCalls, 1, "a repeated observation must reach the store");
+    } finally {
+      fs.rmSync(storeDir, { recursive: true, force: true });
+    }
+  });
+
   it("execute add returns JSON with usage field", async () => {
     let capturedResult: any;
 

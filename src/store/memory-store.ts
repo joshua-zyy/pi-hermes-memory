@@ -86,6 +86,11 @@ export class MemoryStore {
     return this.config.memoryDir ?? path.join(AGENT_ROOT, "pi-hermes-memory");
   }
 
+  /** Directory holding this store's Markdown files, snapshots and trace log. */
+  get storageDir(): string {
+    return this.memoryDir;
+  }
+
   private pathFor(target: "memory" | "user" | "failure"): string {
     if (target === "user") return path.join(this.memoryDir, USER_FILE);
     if (target === "failure") return path.join(this.memoryDir, "failures.md");
