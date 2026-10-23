@@ -20,6 +20,16 @@ afterEach(() => {
   rmTestDirSync(tmpDir);
 });
 
+/**
+ * These three cases keep a live SQLite connection on the legacy file while the
+ * migration moves it. POSIX renames an open file happily; Windows refuses
+ * (EBUSY), so the scenario is not expressible there and the migration correctly
+ * reports a critical failure instead.
+ */
+const LIVE_SQLITE_RENAME_SKIP = process.platform === "win32"
+  ? "Windows cannot rename an open SQLite file"
+  : false;
+
 describe("migrateExtensionRoot", () => {
   it("moves legacy files into new extension root", async () => {
     const legacy = path.join(tmpDir, "memory");
@@ -73,7 +83,7 @@ describe("migrateExtensionRoot", () => {
     assert.equal(fs.existsSync(path.join(legacy, "sessions.db")), true);
   });
 
-  it("publishes the complete SQLite generation and removes the legacy set", async () => {
+  it("publishes the complete SQLite generation and removes the legacy set", { skip: LIVE_SQLITE_RENAME_SKIP }, async () => {
     const legacy = path.join(tmpDir, "memory");
     const target = path.join(tmpDir, "pi-hermes-memory");
     fs.mkdirSync(legacy, { recursive: true });
@@ -106,7 +116,7 @@ describe("migrateExtensionRoot", () => {
     }
   });
 
-  it("migrates one SQLite snapshot while a checkpoint runs", async () => {
+  it("migrates one SQLite snapshot while a checkpoint runs", { skip: LIVE_SQLITE_RENAME_SKIP }, async () => {
     const legacy = path.join(tmpDir, "memory");
     const target = path.join(tmpDir, "pi-hermes-memory");
     fs.mkdirSync(legacy, { recursive: true });
@@ -151,7 +161,7 @@ describe("migrateExtensionRoot", () => {
     }
   });
 
-  it("holds a write exclusion through snapshot publication and source retirement", async () => {
+  it("holds a write exclusion through snapshot publication and source retirement", { skip: LIVE_SQLITE_RENAME_SKIP }, async () => {
     const legacy = path.join(tmpDir, "memory");
     const target = path.join(tmpDir, "pi-hermes-memory");
     fs.mkdirSync(legacy, { recursive: true });
